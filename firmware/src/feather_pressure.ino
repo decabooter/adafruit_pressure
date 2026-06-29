@@ -20,11 +20,6 @@ unsigned long lastReadMs   = 0;
 
 void setup() {
     Serial.begin(115200);
-
-    // Wait up to 10 seconds for serial monitor so we don't miss startup output
-    unsigned long waitStart = millis();
-    while (!Serial && millis() - waitStart < 10000);
-
     Serial.println("=== BOOT ===");
     Serial.flush();
 

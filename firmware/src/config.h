@@ -5,4 +5,4 @@
 #define MQTT_PORT        1883
 
 #define DEVICE_ID        "feather-01"
-#define READ_INTERVAL_MS 5000
+#define READ_INTERVAL_MS 1000

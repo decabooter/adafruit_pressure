@@ -71,6 +71,24 @@ def get_readings_last(n: int) -> list:
     return [_row_to_dict(r) for r in rows]
 
 
+def get_readings_bucketed(from_ts: int, to_ts: int, bucket_ms: int) -> list:
+    with _lock:
+        con = _connect()
+        try:
+            rows = con.execute(
+                "SELECT (ts / ?) * ? AS bucket_ts, "
+                "AVG(pressure_hpa) AS pressure_hpa, "
+                "AVG(temp_c) AS temp_c "
+                "FROM readings WHERE ts >= ? AND ts <= ? "
+                "GROUP BY ts / ? "
+                "ORDER BY bucket_ts DESC",
+                (bucket_ms, bucket_ms, from_ts, to_ts, bucket_ms),
+            ).fetchall()
+        finally:
+            con.close()
+    return [{"ts": int(r[0]), "pressure_hpa": round(r[1], 4), "temp_c": round(r[2], 2)} for r in rows]
+
+
 def get_readings_range(from_ts: int, to_ts: int) -> list:
     with _lock:
         con = _connect()

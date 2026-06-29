@@ -35,6 +35,7 @@ def get_readings(
     last: Optional[int] = Query(default=None),
     from_ts: Optional[int] = Query(default=None, alias="from"),
     to_ts: Optional[int] = Query(default=None, alias="to"),
+    bucket: Optional[int] = Query(default=None),
 ):
     using_last  = last is not None
     using_range = from_ts is not None or to_ts is not None
@@ -45,10 +46,12 @@ def get_readings(
         raise HTTPException(status_code=400, detail="'last' must be 1000 or fewer.")
 
     if using_range:
-        readings = db.get_readings_range(
-            from_ts or 0,
-            to_ts or int(time.time() * 1000),
-        )
+        _from = from_ts or 0
+        _to   = to_ts or int(time.time() * 1000)
+        if bucket and bucket > 0:
+            readings = db.get_readings_bucketed(_from, _to, bucket)
+        else:
+            readings = db.get_readings_range(_from, _to)
     else:
         readings = db.get_readings_last(last if using_last else 60)
 

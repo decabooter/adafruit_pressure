@@ -38,8 +38,8 @@ restart needed to update — just a static HTML file with vanilla JS.
 
 ## Data Refresh
 
-- On page load: fetch `GET /readings?from=<12h_ago_ms>&to=<now_ms>` immediately
-- Every 5 seconds: repeat the same fetch (sliding 12-hour window) and update display in-place
+- On page load: fetch `GET /readings?from=<12h_ago_ms>&to=<now_ms>&bucket=5000` immediately
+- Every 5 seconds: repeat the same fetch (sliding 12-hour window, 5-second buckets) and update display in-place
 - Use `setInterval` with `fetch` — no WebSocket needed for this POC
 - If the fetch fails: display a subtle "Connection lost — retrying…" status in the header; keep the last known values visible
 
@@ -51,7 +51,7 @@ restart needed to update — just a static HTML file with vanilla JS.
 - Chart type: line, no fill
 - X-axis: timestamp labels formatted as `HH:MM` (local time); max 8 tick labels shown
 - Y-axis: pressure in hPa, auto-scaled to the data range with 5 hPa padding above/below
-- Data: all readings in the last 12 hours (oldest on left, newest on right)
+- Data: 5-second averages across the last 12 hours (~8,640 points), fetched via `?bucket=5000`. Raw 1 Hz data is stored in the database; the `bucket` parameter does the averaging server-side before sending to the browser
 - No animation on update (set `animation: false`) to avoid visual jitter during live refresh
 
 ---
@@ -113,7 +113,7 @@ FastAPI server is running.
 
 1. Opening `http://localhost:8000/` in a browser shows the dashboard without errors in the JS console
 2. Readout cards update to the latest sensor values within 6 seconds of a new reading arriving in the database
-3. The chart plots all readings from the last 12 hours with timestamps on the X-axis
+3. The chart plots 5-second averaged buckets across the last 12 hours with timestamps on the X-axis
 4. With the API stopped, the dashboard shows "Connection lost — retrying…" and does not crash
 5. The page renders correctly at both 1920×1080 and 1280×800 viewport sizes
 6. Clicking "Export CSV" opens the modal with From defaulting to 24h before the latest reading and To defaulting to the latest reading
