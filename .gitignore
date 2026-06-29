@@ -1,0 +1,9 @@
+# Firmware secrets and build artifacts
+firmware/src/secrets.h
+firmware/.pio/
+
+# Platform credentials
+platform/mosquitto.passwd
+
+# Backend runtime files
+backend/readings.db

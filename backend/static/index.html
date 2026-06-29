@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Air Pressure Monitor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #eaeaea; font-family: system-ui, sans-serif; min-height: 100vh; }
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1rem 1.5rem; border-bottom: 1px solid #2a2a4a;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 500; letter-spacing: 0.05em; }
+  #status { font-size: 0.8rem; color: #888; }
+  #status.error { color: #e05a5a; }
+  .header-right { display: flex; align-items: center; gap: 1rem; }
+  #export-btn {
+    background: #2a2a4a; color: #eaeaea; border: 1px solid #3a3a6a;
+    border-radius: 6px; padding: 0.35rem 0.8rem; font-size: 0.8rem;
+    cursor: pointer; white-space: nowrap;
+  }
+  #export-btn:hover { background: #3a3a6a; }
+  main { display: flex; flex-wrap: wrap; gap: 1.5rem; padding: 1.5rem; }
+  .cards { display: flex; flex-direction: column; gap: 1rem; min-width: 180px; }
+  .card { background: #16213e; border-radius: 10px; padding: 1.25rem 1.5rem; }
+  .card .value { font-size: 3rem; font-weight: 600; line-height: 1; }
+  .card .unit  { font-size: 1.2rem; font-weight: 400; color: #aaa; margin-left: 0.2rem; }
+  .card .label { font-size: 0.8rem; color: #666; margin-top: 0.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
+  .chart-box  { flex: 1; min-width: 300px; background: #16213e; border-radius: 10px; padding: 1.25rem; }
+
+  /* Export modal */
+  #modal-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #modal-backdrop.open { display: flex; }
+  #modal {
+    background: #16213e; border: 1px solid #2a2a4a; border-radius: 12px;
+    padding: 1.75rem 2rem; width: 380px; max-width: 95vw;
+  }
+  #modal h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1.25rem; }
+  .modal-field { margin-bottom: 1rem; }
+  .modal-field label { display: block; font-size: 0.78rem; color: #888; margin-bottom: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .modal-field input[type="datetime-local"] {
+    width: 100%; background: #1a1a2e; color: #eaeaea;
+    border: 1px solid #3a3a6a; border-radius: 6px;
+    padding: 0.45rem 0.6rem; font-size: 0.9rem;
+  }
+  #modal-error { color: #e05a5a; font-size: 0.82rem; min-height: 1.2em; margin-bottom: 0.75rem; }
+  .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
+  .modal-actions button {
+    padding: 0.45rem 1.1rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer; border: none;
+  }
+  #modal-download { background: #4a9eff; color: #fff; }
+  #modal-download:hover { background: #3a8eef; }
+  #modal-cancel { background: #2a2a4a; color: #eaeaea; border: 1px solid #3a3a6a; }
+  #modal-cancel:hover { background: #3a3a6a; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Air Pressure Monitor</h1>
+  <div class="header-right">
+    <span id="status">Connecting…</span>
+    <button id="export-btn" onclick="openExport()">Export CSV</button>
+  </div>
+</header>
+<main>
+  <div class="cards">
+    <div class="card">
+      <div class="value" id="pressure">—<span class="unit">hPa</span></div>
+      <div class="label">Pressure</div>
+    </div>
+    <div class="card">
+      <div class="value" id="temp">—<span class="unit">°C</span></div>
+      <div class="label">Temperature</div>
+    </div>
+  </div>
+  <div class="chart-box">
+    <canvas id="chart"></canvas>
+  </div>
+</main>
+
+<!-- Export modal -->
+<div id="modal-backdrop">
+  <div id="modal">
+    <h2>Export CSV</h2>
+    <div class="modal-field">
+      <label>From</label>
+      <input type="datetime-local" id="export-from">
+    </div>
+    <div class="modal-field">
+      <label>To</label>
+      <input type="datetime-local" id="export-to">
+    </div>
+    <div id="modal-error"></div>
+    <div class="modal-actions">
+      <button id="modal-cancel" onclick="closeExport()">Cancel</button>
+      <button id="modal-download" onclick="downloadCSV()">Download</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const ctx = document.getElementById('chart');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Pressure (hPa)',
+        data: [],
+        borderColor: '#4a9eff',
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.3,
+        fill: false,
+      }]
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#888', maxTicksLimit: 8 }, grid: { color: '#2a2a4a' } },
+        y: { ticks: { color: '#888' }, grid: { color: '#2a2a4a' } },
+      }
+    }
+  });
+
+  const statusEl   = document.getElementById('status');
+  const pressureEl = document.getElementById('pressure');
+  const tempEl     = document.getElementById('temp');
+
+  let latestTs = null; // ms timestamp of the most recent reading in the DB
+
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function setReadout(el, value, unit) {
+    el.innerHTML = value + '<span class="unit">' + unit + '</span>';
+  }
+
+  function windowParams() {
+    const now = Date.now();
+    return 'from=' + (now - 12 * 3600 * 1000) + '&to=' + now;
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch('/readings?' + windowParams());
+      if (!res.ok) throw new Error(res.statusText);
+      const { readings } = await res.json();
+
+      if (readings.length === 0) {
+        statusEl.textContent = 'No readings yet';
+        statusEl.className = '';
+        return;
+      }
+
+      const ordered = [...readings].reverse(); // oldest → newest for chart
+      const pressures = ordered.map(r => r.pressure_hpa);
+      const min = Math.min(...pressures);
+      const max = Math.max(...pressures);
+
+      chart.data.labels = ordered.map(r => fmtTime(r.ts));
+      chart.data.datasets[0].data = pressures;
+      chart.options.scales.y.min = Math.floor(min - 5);
+      chart.options.scales.y.max = Math.ceil(max + 5);
+      chart.update();
+
+      const latest = readings[0];
+      latestTs = latest.ts;
+      setReadout(pressureEl, latest.pressure_hpa.toFixed(2), 'hPa');
+      setReadout(tempEl,     latest.temp_c.toFixed(1),       '°C');
+
+      statusEl.textContent = 'Last update: ' + new Date(latest.ts).toLocaleTimeString();
+      statusEl.className   = '';
+    } catch {
+      statusEl.textContent = 'Connection lost — retrying…';
+      statusEl.className   = 'error';
+    }
+  }
+
+  // ── Export helpers ──────────────────────────────────────────────────────────
+
+  function toDatetimeLocal(ms) {
+    // Returns a string suitable for datetime-local input value (local time, no tz)
+    const d = new Date(ms);
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+           'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function toISOLocal(ms) {
+    const d = new Date(ms);
+    const pad = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+           'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function openExport() {
+    const refTs = latestTs || Date.now();
+    document.getElementById('export-from').value = toDatetimeLocal(refTs - 24 * 3600 * 1000);
+    document.getElementById('export-to').value   = toDatetimeLocal(refTs);
+    document.getElementById('modal-error').textContent = '';
+    document.getElementById('modal-backdrop').classList.add('open');
+  }
+
+  function closeExport() {
+    document.getElementById('modal-backdrop').classList.remove('open');
+  }
+
+  async function downloadCSV() {
+    const fromVal = document.getElementById('export-from').value;
+    const toVal   = document.getElementById('export-to').value;
+    const errEl   = document.getElementById('modal-error');
+    errEl.textContent = '';
+
+    if (!fromVal || !toVal) { errEl.textContent = 'Please set both dates.'; return; }
+
+    const fromMs = new Date(fromVal).getTime();
+    const toMs   = new Date(toVal).getTime();
+
+    if (fromMs >= toMs) { errEl.textContent = '"From" must be before "To".'; return; }
+
+    let readings;
+    try {
+      const res = await fetch('/readings?from=' + fromMs + '&to=' + toMs);
+      if (!res.ok) throw new Error(res.statusText);
+      ({ readings } = await res.json());
+    } catch (e) {
+      errEl.textContent = 'Fetch failed: ' + e.message;
+      return;
+    }
+
+    if (readings.length === 0) {
+      errEl.textContent = 'No data in this range.';
+      return;
+    }
+
+    const rows = [['timestamp', 'pressure_hpa', 'temp_c', 'device_id']];
+    for (const r of [...readings].reverse()) {
+      rows.push([toISOLocal(r.ts), r.pressure_hpa.toFixed(4), r.temp_c.toFixed(2), r.device_id]);
+    }
+    const csv = rows.map(r => r.join(',')).join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const date = toISOLocal(fromMs).slice(0, 10);
+    a.href = url;
+    a.download = 'pressure_' + date + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    closeExport();
+  }
+
+  // Close modal on backdrop click
+  document.getElementById('modal-backdrop').addEventListener('click', function(e) {
+    if (e.target === this) closeExport();
+  });
+
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>
